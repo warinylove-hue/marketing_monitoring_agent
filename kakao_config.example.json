@@ -1,0 +1,5 @@
+{
+  "rest_api_key": "Kakao Developers REST API 키를 여기에 입력",
+  "access_token": "발급받은 access_token을 여기에 입력",
+  "refresh_token": "발급받은 refresh_token을 여기에 입력"
+}

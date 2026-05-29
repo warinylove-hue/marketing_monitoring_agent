@@ -1,0 +1,9 @@
+kakao_config.json
+site-monitoriing-project-c639a6c0fe66.json
+credentials.json
+logs/
+__pycache__/
+*.pyc
+dashboard/.env.local
+dashboard/.next/
+dashboard/node_modules/
