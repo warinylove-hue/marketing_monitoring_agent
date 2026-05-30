@@ -68,7 +68,7 @@ TARGET_SITES: list[dict[str, Any]] = [
     {
         "url": "https://www.ajd.co.kr/internet/list/sys:product:internet:skt",
         "site_name": AJD_SITE_NAME,
-        "sheet_name": "AJD",
+        "sheet_name": "아정당",
         "crawl_mode": "all",
         "carrier_name": "",
         "internet_name": "",
