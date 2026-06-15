@@ -44,16 +44,15 @@ export async function getDashboardData(): Promise<DashboardData> {
     })
     .filter((row) => row.collectedAt && row.siteName);
 
-  const latestDate = rows
-    .map((row) => row.date)
-    .sort()
-    .at(-1) || "";
-  const latestRows = rows.filter((row) => row.date === latestDate);
+  const latestCollectedAt = findLatestCollectedAt(rows);
+  const latestDate = latestCollectedAt.slice(0, 10);
+  const latestRows = rows.filter((row) => row.collectedAt === latestCollectedAt);
   const topGiftRows = buildTopGiftRows(latestRows);
 
   return {
     generatedAt: new Date().toISOString(),
     latestDate,
+    latestCollectedAt,
     kpis: buildKpis(rows, latestRows, topGiftRows),
     rows,
     latestRows,
@@ -62,6 +61,31 @@ export async function getDashboardData(): Promise<DashboardData> {
     topGiftRows,
     aiSummary: buildAiSummary(rows, latestRows, latestDate, topGiftRows),
   };
+}
+
+function findLatestCollectedAt(rows: CrawlRow[]): string {
+  return rows
+    .map((row) => row.collectedAt)
+    .filter(Boolean)
+    .sort((a, b) => parseCollectedAt(a).getTime() - parseCollectedAt(b).getTime())
+    .at(-1) || "";
+}
+
+function parseCollectedAt(value: string): Date {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})$/,
+  );
+  if (!match) return new Date(value);
+
+  const [, year, month, day, hour, minute, second] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
 }
 
 function buildGiftTrend(rows: CrawlRow[]): TrendPoint[] {

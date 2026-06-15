@@ -50,6 +50,7 @@ export type TopGiftItem = {
 export type DashboardData = {
   generatedAt: string;
   latestDate: string;
+  latestCollectedAt: string;
   kpis: DashboardKpis;
   rows: CrawlRow[];
   latestRows: CrawlRow[];

@@ -67,10 +67,7 @@ export function DashboardShell() {
   }
 
   const latestRows = useMemo(() => data?.latestRows || [], [data]);
-  const latestCollectedAt = useMemo(
-    () => latestRows.map((row) => row.collectedAt).sort().at(-1) || "-",
-    [latestRows],
-  );
+  const latestCollectedAt = data?.latestCollectedAt || "-";
   const latestLoadedAt = data?.generatedAt ? formatDateTime(data.generatedAt) : "-";
 
   return (
