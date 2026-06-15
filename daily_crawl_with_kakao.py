@@ -8,6 +8,7 @@ and sends progress summaries to KakaoTalk "나에게 보내기" when kakao_confi
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import traceback
@@ -25,8 +26,8 @@ import app
 sys.stdout.reconfigure(encoding="utf-8")
 
 BASE_DIR = Path(__file__).parent
-KAKAO_CONFIG_FILE = BASE_DIR / "kakao_config.json"
-LOG_DIR = BASE_DIR / "logs"
+KAKAO_CONFIG_FILE = Path(os.environ.get("KAKAO_CONFIG_FILE", str(BASE_DIR / "kakao_config.json")))
+LOG_DIR = Path(os.environ.get("LOG_DIR", str(BASE_DIR / "logs")))
 SHEET_URL = "https://docs.google.com/spreadsheets/"
 
 
@@ -46,14 +47,28 @@ class KakaoNotifier:
             )
 
     def _load_config(self) -> dict[str, str]:
+        if os.environ.get("KAKAO_CONFIG_JSON"):
+            return json.loads(os.environ["KAKAO_CONFIG_JSON"])
+
+        env_config = {
+            "rest_api_key": os.environ.get("KAKAO_REST_API_KEY", ""),
+            "access_token": os.environ.get("KAKAO_ACCESS_TOKEN", ""),
+            "refresh_token": os.environ.get("KAKAO_REFRESH_TOKEN", ""),
+        }
+        if any(env_config.values()):
+            return env_config
+
         if not self.config_path.exists():
             return {}
         with self.config_path.open("r", encoding="utf-8") as file:
             return json.load(file)
 
     def _save_config(self) -> None:
-        with self.config_path.open("w", encoding="utf-8") as file:
-            json.dump(self.config, file, ensure_ascii=False, indent=2)
+        try:
+            with self.config_path.open("w", encoding="utf-8") as file:
+                json.dump(self.config, file, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            print(f"[카카오톡 토큰 저장 생략] {exc}", flush=True)
 
     def refresh_access_token(self) -> bool:
         if not self.config.get("rest_api_key") or not self.config.get("refresh_token"):

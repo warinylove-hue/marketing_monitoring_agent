@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
+import { google } from "googleapis";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,81 @@ function getCrawlerPaths() {
   return { projectRoot, scriptPath, logDir };
 }
 
+function hasCloudRunJobConfig() {
+  return Boolean(
+    process.env.GOOGLE_CLOUD_PROJECT_ID &&
+      process.env.CLOUD_RUN_REGION &&
+      process.env.CLOUD_RUN_JOB_NAME,
+  );
+}
+
+async function runCloudRunJob() {
+  const serviceAccountEmail =
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+
+  if (!serviceAccountEmail || !privateKey) {
+    return NextResponse.json(
+      {
+        error:
+          "Cloud Run Job 실행에 필요한 GOOGLE_SERVICE_ACCOUNT_EMAIL 또는 GOOGLE_PRIVATE_KEY가 없습니다.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID!;
+  const region = process.env.CLOUD_RUN_REGION!;
+  const jobName = process.env.CLOUD_RUN_JOB_NAME!;
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: serviceAccountEmail,
+      private_key: privateKey,
+    },
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+  });
+  const client = await auth.getClient();
+  const token = await client.getAccessToken();
+
+  const response = await fetch(
+    `https://${region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${projectId}/jobs/${jobName}:run`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token.token}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    },
+  );
+
+  const payloadText = await response.text();
+  if (!response.ok) {
+    return NextResponse.json(
+      {
+        error: "Cloud Run Job 실행 요청에 실패했습니다.",
+        detail: payloadText,
+      },
+      { status: response.status },
+    );
+  }
+
+  let executionName = "";
+  try {
+    const payload = JSON.parse(payloadText) as { metadata?: { name?: string } };
+    executionName = payload.metadata?.name || "";
+  } catch {
+    executionName = "";
+  }
+
+  return NextResponse.json({
+    ok: true,
+    message:
+      "클라우드 크롤러 실행을 요청했습니다. 완료 후 '최신 저장된 정보 불러오기'를 눌러 화면에 반영하세요.",
+    executionName,
+  });
+}
+
 export async function GET() {
   const state = globalThis.manualCrawlState;
   return NextResponse.json({
@@ -35,6 +111,10 @@ export async function GET() {
 }
 
 export async function POST() {
+  if (hasCloudRunJobConfig()) {
+    return runCloudRunJob();
+  }
+
   if (process.env.VERCEL === "1" && !process.env.CLOUD_CRAWLER_TRIGGER_URL) {
     return NextResponse.json(
       {

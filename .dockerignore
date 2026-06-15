@@ -1,0 +1,16 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+logs/
+
+site-monitoriing-project-c639a6c0fe66.json
+credentials.json
+kakao_config.json
+
+dashboard/.env.local
+dashboard/.next/
+dashboard/node_modules/
+dashboard/
+
+agent-transcripts/

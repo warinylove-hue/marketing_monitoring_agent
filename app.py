@@ -5,6 +5,7 @@
 """
 
 import re
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -18,8 +19,11 @@ from playwright.sync_api import Page, sync_playwright
 # [설정 1] 구글 시트 / 인증
 # =============================================================================
 SPREADSHEET_NAME = "마케팅_크롤링_DB"
-CREDENTIALS_FILE = (
+DEFAULT_CREDENTIALS_FILE = (
     Path(__file__).parent / "site-monitoriing-project-c639a6c0fe66.json"
+)
+CREDENTIALS_FILE = Path(
+    os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", str(DEFAULT_CREDENTIALS_FILE))
 )
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
