@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Play, RefreshCw } from "lucide-react";
+import { AlertTriangle, Play, RefreshCw } from "lucide-react";
 
 import { ChatPanel } from "@/components/ChatPanel";
 import { DataTable } from "@/components/DataTable";
@@ -16,6 +16,7 @@ export function DashboardShell() {
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingCrawl, setIsStartingCrawl] = useState(false);
   const [crawlMessage, setCrawlMessage] = useState("");
+  const [isCrawlConfirmOpen, setIsCrawlConfirmOpen] = useState(false);
 
   async function loadDashboard() {
     setIsLoading(true);
@@ -39,6 +40,7 @@ export function DashboardShell() {
   }, []);
 
   async function startManualCrawl() {
+    setIsCrawlConfirmOpen(false);
     setIsStartingCrawl(true);
     setCrawlMessage("");
     setError("");
@@ -83,8 +85,8 @@ export function DashboardShell() {
                 대표 통신판매 사이트 상품 요금 및 사은품 대시 보드
               </h1>
               <p className="mt-3 max-w-3xl text-slate-600">
-                Google Sheet에 누적된 6개 사이트 크롤링 데이터를 기준으로 사은품 변동,
-                사이트별 경쟁력, 상품 조합별 우위를 한 화면에서 확인합니다.
+                매일 오전 8시에 자동으로 대표 통신 6개 사이트를 크롤링하여 통신사별,
+                상품별 제안 요금 및 사은품 정보를 업데이트 합니다.
               </p>
             </div>
             <div className="flex w-full flex-col gap-2 md:w-auto">
@@ -93,13 +95,16 @@ export function DashboardShell() {
               </p>
               <button
                 type="button"
-                onClick={() => void startManualCrawl()}
+                onClick={() => setIsCrawlConfirmOpen(true)}
                 disabled={isStartingCrawl}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 py-3 text-sm font-black text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Play size={16} />
-                지금 자료 수집하기
+                관리자용 수동 크롤링 실행
               </button>
+              <p className="text-right text-xs leading-5 text-amber-700">
+                누르면 6개 사이트를 다시 수집하고 Google Sheet에 새 데이터가 추가됩니다.
+              </p>
               <p className="mt-2 text-right text-xs font-black text-slate-700">
                 최신 저장 일시 <span className="ml-1 text-slate-600">{latestLoadedAt}</span>
               </p>
@@ -158,6 +163,49 @@ export function DashboardShell() {
       </section>
 
       <ChatPanel />
+      {isCrawlConfirmOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-[2rem] bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <p className="text-sm font-black text-amber-700">관리자 확인 필요</p>
+                <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+                  지금 새 크롤링을 실행할까요?
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  이 작업은 6개 사이트를 다시 방문해 약 40분간 데이터를 수집하고,
+                  Google Sheet에 새 행을 추가합니다. 단순 화면 갱신은 아래의
+                  "최신 저장된 정보 불러오기" 버튼을 사용하세요.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+              <p className="font-bold text-slate-950">실행 결과</p>
+              <p className="mt-1">새 수집 묶음이 생성되며, 중복 실행 시 같은 날짜 데이터가 여러 번 쌓일 수 있습니다.</p>
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsCrawlConfirmOpen(false)}
+                className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void startManualCrawl()}
+                disabled={isStartingCrawl}
+                className="rounded-2xl bg-amber-600 px-5 py-3 text-sm font-black text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                네, 지금 크롤링 실행
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
