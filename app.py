@@ -1131,7 +1131,12 @@ def _skb_click_label(page: Page, text: str, name_hint: str = "") -> None:
     page.evaluate(
         """({text, nameHint}) => {
         const labels = [...document.querySelectorAll('label')];
-        const label = labels.find((node) => {
+        const isVisible = (node) => {
+            const rect = node.getBoundingClientRect();
+            const style = getComputedStyle(node);
+            return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+        };
+        const matches = labels.filter((node) => {
             const value = (node.innerText || '').trim().replace(/\\s+/g, ' ');
             if (value !== text && !value.startsWith(text)) return false;
             if (!nameHint) return true;
@@ -1139,12 +1144,118 @@ def _skb_click_label(page: Page, text: str, name_hint: str = "") -> None:
             const inputName = node.querySelector('input')?.getAttribute('name') || '';
             return nodeName.includes(nameHint) || inputName.includes(nameHint);
         });
+        const label = matches.find(isVisible) || matches[0];
         if (!label) throw new Error(`SKB label not found: ${nameHint} / ${text}`);
         label.click();
     }""",
         {"text": text, "nameHint": name_hint},
     )
     time.sleep(AFTER_CLICK_WAIT_SEC)
+
+
+def _skb_select_gift_benefit(page: Page) -> None:
+    page.evaluate(
+        """async () => {
+        const monthlyDiscount = document.getElementById('monthlyDiscount');
+        const chooseGift = document.getElementById('chooseGift');
+        if (!monthlyDiscount || !chooseGift) throw new Error('SKB gift benefit radios not found');
+
+        monthlyDiscount.checked = false;
+        chooseGift.checked = true;
+        await chooseGiftPopup();
+
+        const gift = [...document.querySelectorAll('#giftPopList .gift-info-cont')]
+            .find((node) => (node.dataset.giftDisplayName || '').includes('신세계 모바일 상품권'));
+        if (!gift) throw new Error('SKB Shinsegae mobile gift not found');
+
+        gift.classList.add('on');
+        const doneButton = document.getElementById('giftDoneBtn');
+        if (!doneButton) throw new Error('SKB gift done button not found');
+        doneButton.disabled = false;
+        doneButton.click();
+
+        monthlyDiscount.checked = false;
+        chooseGift.checked = true;
+    }"""
+    )
+    time.sleep(AFTER_CLICK_WAIT_SEC)
+
+
+def _skb_select_internet_only_gift_benefit(page: Page) -> None:
+    page.evaluate(
+        """async () => {
+        const monthlyDiscount = document.getElementById('monthlyDiscount');
+        const chooseGift = document.getElementById('chooseGift');
+        const selectedGiftArea = document.getElementById('selectedGiftItemArea');
+        const giftName = document.getElementById('giftNm');
+        let selectedInternet = document.querySelector('input[name="form-radio-type-internet"]:checked');
+        if (!selectedInternet) {
+            const currentName = (document.getElementById('inetProdNm')?.innerText || '').replace(/\\s+/g, ' ').trim();
+            const selectedWifi = document.querySelector('#telecom')?.value || '';
+            selectedInternet = [...document.querySelectorAll('input[name="form-radio-type-internet"]')]
+                .find((input) => {
+                    const productName = (input.getAttribute('data-prodctgnm') || '').replace(/\\s+/g, ' ').trim();
+                    const marketingName = (input.closest('label')?.innerText || '').replace(/\\s+/g, ' ').trim();
+                    const wifiMatches = !selectedWifi || input.getAttribute('data-supprodctgid') === selectedWifi;
+                    return wifiMatches && currentName && (currentName.includes(productName) || marketingName.includes(productName));
+                });
+            if (selectedInternet) {
+                selectedInternet.checked = true;
+            }
+        }
+        if (!monthlyDiscount || !chooseGift || !selectedGiftArea || !giftName || !selectedInternet) {
+            throw new Error('SKB internet-only gift state not found');
+        }
+
+        const productCtgId = selectedInternet.getAttribute('data-prodctgid');
+        const productInput =
+            document.querySelector(`input[name="default-form-radio-type-addOns"][data-prodctgid="${productCtgId}"]`) ||
+            selectedInternet;
+        [...document.querySelectorAll('input[name="form-checkbox-type-addOns"]')].forEach((input) => {
+            input.checked = false;
+        });
+        [...document.querySelectorAll('input[name="form-radio-type-addOns"]')].forEach((input) => {
+            input.checked = false;
+        });
+        [...document.querySelectorAll('input[name="default-form-radio-type-addOns"]')].forEach((input) => {
+            input.checked = false;
+        });
+        selectedInternet.checked = true;
+        productInput.checked = true;
+        const requestData = {
+            giftClCd: '',
+            inetFeeProdId: productInput.getAttribute('data-prodId') || '',
+            tvProdCtgId: '',
+            agrmtDcMtdCd: '03',
+            speedClCd: productInput.getAttribute('data-speedClCd') || productInput.getAttribute('data-speedclcd') || '',
+            giftKindCd: '',
+        };
+        const response = await fetch('/shop/core-prod/product/join/product-choice/new/gift-list', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(requestData),
+        });
+        const payload = await response.json();
+        const gifts = Array.isArray(payload) ? payload : (payload.result || []);
+        const gift =
+            gifts.find((item) => (item.giftMgmtNm || '').includes('신세계')) ||
+            gifts.find((item) => (item.giftDesc || '').includes('상품권') && Number(item.giftAmt || 0) > 0);
+        if (!gift) throw new Error('SKB internet-only Shinsegae gift not found');
+
+        let unit = gift.giftKindCd === '01' ? '만원' : '';
+        const amount = Number(gift.giftAmt || 0);
+        const displayName = `${gift.giftMgmtNm || '신세계 모바일 상품권'} ${amount}${unit}`.replace(/\\s+/g, ' ').trim();
+
+        monthlyDiscount.checked = false;
+        chooseGift.checked = true;
+        selectedGiftArea.innerHTML =
+            `<div class="gift-info-cont" data-gift-mgmt-num="${gift.giftMgmtNum}" data-gift-display-name="${displayName}" data-gift-mgmt-nm="${gift.giftMgmtNm || ''}"></div>`;
+        giftName.textContent = displayName;
+
+        if (typeof displayPriceInfo === 'function') displayPriceInfo();
+    }"""
+    )
+    time.sleep(AFTER_CLICK_WAIT_SEC * 2)
 
 
 def _skb_click_group_index(page: Page, name_hint: str, index: int) -> None:
@@ -1176,19 +1287,58 @@ def _skb_select_wifi7(page: Page) -> None:
     time.sleep(AFTER_CLICK_WAIT_SEC)
 
 
+def _skb_save_selected_internet(page: Page) -> None:
+    page.evaluate(
+        """() => {
+        if (typeof saveSelectedInet === 'function') {
+            saveSelectedInet();
+        }
+    }"""
+    )
+    time.sleep(AFTER_CLICK_WAIT_SEC)
+
+
 def _skb_select_no_internet_addons(page: Page, default_addon_index: int) -> None:
     page.evaluate(
-        """(defaultAddonIndex) => {
-        const defaultLabels = [...document.querySelectorAll('label')].filter((label) =>
-            label.querySelector('input')?.getAttribute('name') === 'default-form-radio-type-addOns'
+        """() => {
+        const selectedInternet = document.querySelector('input[name="form-radio-type-internet"]:checked');
+        if (!selectedInternet) throw new Error('SKB selected internet product not found');
+
+        const topSubCtg = selectedInternet.getAttribute('data-prodctgid');
+        let defaultInput = document.querySelector(
+            `input[name="default-form-radio-type-addOns"][data-prodctgid="${topSubCtg}"]`
         );
-        const label = defaultLabels[defaultAddonIndex];
-        if (!label) {
-            throw new Error(`SKB default addon not found: ${defaultAddonIndex}`);
+        if (!defaultInput) {
+            defaultInput =
+                document.querySelector('input[name="default-form-radio-type-addOns"]:checked') ||
+                [...document.querySelectorAll('input[name="default-form-radio-type-addOns"]')]
+                    .find((input) => {
+                        const text = (input.closest('label')?.innerText || '').trim();
+                        return text.includes('선택안함');
+                    });
         }
-        label.click();
-    }""",
-        default_addon_index,
+        if (!defaultInput) throw new Error('SKB no-addon input not found');
+
+        [...document.querySelectorAll('input[name="form-checkbox-type-addOns"]')].forEach((input) => {
+            input.checked = false;
+        });
+        [...document.querySelectorAll('input[name="form-radio-type-addOns"]')].forEach((input) => {
+            input.checked = false;
+        });
+        [...document.querySelectorAll('input[name="form-radio-type-addOns2"]')].forEach((input) => {
+            input.checked = false;
+        });
+        [...document.querySelectorAll('input[name="default-form-radio-type-addOns"]')].forEach((input) => {
+            input.checked = false;
+        });
+
+        defaultInput.checked = true;
+        selectedInternet.checked = true;
+        defaultInput.dispatchEvent(new Event('change', {bubbles: true}));
+        defaultInput.dispatchEvent(new Event('input', {bubbles: true}));
+        selectedInternet.dispatchEvent(new Event('change', {bubbles: true}));
+        selectedInternet.dispatchEvent(new Event('input', {bubbles: true}));
+    }"""
     )
     time.sleep(AFTER_CLICK_WAIT_SEC)
 
@@ -1237,6 +1387,7 @@ def _skb_select_internet_product(
     _skb_click_group_index(page, group_hint, option_index)
     _skb_uncheck_wifi_addons(page)
     _skb_select_no_internet_addons(page, default_addon_index)
+    _skb_save_selected_internet(page)
 
 
 def _skb_select_defaults(
@@ -1245,6 +1396,7 @@ def _skb_select_defaults(
     option_index: int,
     default_addon_index: int,
     tv_name: str = "",
+    select_gift: bool = True,
 ) -> None:
     _skb_click_label(page, "없음", "packageInfo")
     _skb_select_wifi7(page)
@@ -1256,17 +1408,40 @@ def _skb_select_defaults(
         _skb_select_no_tv_content(page)
         _skb_uncheck_wifi_addons(page)
         _skb_select_no_internet_addons(page, default_addon_index)
-    _skb_click_label(page, "사은품 선택")
-    _skb_select_no_internet_addons(page, default_addon_index)
-    if tv_name:
-        _skb_select_no_tv_content(page)
+        _skb_save_selected_internet(page)
+    if select_gift:
+        _skb_select_gift_benefit(page)
 
 
 def _skb_extract_result(page: Page) -> dict[str, str]:
     text = page.locator("body").inner_text(timeout=30_000)
 
-    monthly_match = re.search(r"예상 납부금액\s*월\s*([\d,]+원)", text)
-    gift_match = re.search(r"신세계\s*모바일\s*상품권\s*([\d,]+만원)", text)
+    monthly_text = page.evaluate(
+        """() => {
+        const total = document.getElementById('dcAfterAmtVatAll')?.innerText;
+        if (total) return `월 ${total.replace(/[^\\d,]/g, '')}원`;
+        const totalPrice = document.querySelector('.section-foot .total-price')?.innerText;
+        return totalPrice || '';
+    }"""
+    ).strip()
+    monthly_match = (
+        re.search(r"월\s*([\d,]+원)", monthly_text)
+        or re.search(r"예상\s*납부\s*금액\s*온라인\s*전용\s*월\s*([\d,]+원)", text)
+        or re.search(r"예상\s*납부\s*금액\s*월\s*([\d,]+원)", text)
+    )
+
+    gift_text = page.evaluate(
+        """() => {
+        const giftName = document.getElementById('giftNm')?.innerText || '';
+        const selectedGift = document.getElementById('selectedGiftItemArea')?.innerText || '';
+        return giftName || selectedGift;
+    }"""
+    )
+    gift_numbers = [int(value.replace(",", "")) for value in re.findall(r"([\d,]+)\s*만원", gift_text)]
+    gift_match = re.search(r"신세계\s*모바일\s*상품권\s*([\d,]+만원)", gift_text)
+    gift_amount = f"{sum(gift_numbers)}만원" if gift_numbers else (
+        gift_match.group(1) if gift_match else ""
+    )
     internet_match = re.search(r"상품 요금 정보.*?인터넷\s*\n([^\n]+)", text, re.S)
     tv_match = re.search(r"상품 요금 정보.*?B tv\s*\n([^\n]+)", text, re.S)
     internet_name = internet_match.group(1).strip() if internet_match else ""
@@ -1276,7 +1451,7 @@ def _skb_extract_result(page: Page) -> dict[str, str]:
         "internet_name": internet_name,
         "tv_name": tv_match.group(1).strip() if tv_match else "",
         "base_fee": monthly_match.group(1) if monthly_match else "",
-        "gift_amount": gift_match.group(1) if gift_match else "",
+        "gift_amount": gift_amount,
     }
 
 
@@ -1343,13 +1518,23 @@ def crawl_skb_all(
                 timeout=PAGE_LOAD_TIMEOUT_MS,
             )
             time.sleep(8)
-            _skb_select_defaults(page, group_hint, option_index, addon_index)
+            is_2030_direct = internet_fallback.startswith("2030 다이렉트")
+            _skb_select_defaults(
+                page,
+                group_hint,
+                option_index,
+                addon_index,
+                select_gift=False,
+            )
+            if not is_2030_direct:
+                _skb_select_internet_only_gift_benefit(page)
             data = _skb_extract_result(page)
             internet_name = (
                 internet_fallback
-                if internet_fallback.startswith("2030")
+                if is_2030_direct
                 else data["internet_name"] or internet_fallback
             )
+            gift_amount = "0원" if is_2030_direct else data["gift_amount"]
             append_row(
                 worksheet,
                 [
@@ -1359,14 +1544,14 @@ def crawl_skb_all(
                     internet_name,
                     "",
                     data["base_fee"],
-                    data["gift_amount"],
+                    gift_amount,
                 ],
             )
             success += 1
             print(
                 f"  [{success}/{total}] 인터넷 단독 / {internet_name} -> "
                 f"요금 {data['base_fee'] or '(없음)'}, "
-                f"상품권 {data['gift_amount'] or '(없음)'}"
+                f"상품권 {gift_amount or '(없음)'}"
             )
         except Exception as exc:
             fail += 1
